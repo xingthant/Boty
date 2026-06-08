@@ -1,6 +1,6 @@
 const TelegramBot = require("node-telegram-bot-api");
 const fs = require("fs");
-const express = require("express"); // Added for Render port binding
+const express = require("express");
 
 const TOKEN = "8841041534:AAGZrjCDhU_lGe_p4yY-EmQ3-JsvJQxEmI0";
 const OWNER_ID = 7756391343;
@@ -17,6 +17,7 @@ let totalRecords = 0;
 let totalTodayDeposit = 0;
 let totalMonthDeposit = 0;
 
+// FIXED: Now accurately detects keys even if there are spaces before/after the colons
 function isValidRecord(text) {
     const requiredFields = [
         "Ws账号",
@@ -27,20 +28,23 @@ function isValidRecord(text) {
         "本月首存"
     ];
 
-    return requiredFields.every(field =>
-        text.includes(field)
-    );
+    // Uses regex to search for the field name regardless of spaces and colon style
+    return requiredFields.every(field => {
+        const regex = new RegExp(field + "\\s*[：:]");
+        return regex.test(text);
+    });
 }
 
 function extractData(text) {
+    // Upgraded patterns to perfectly capture values across varying spacing configurations
     const platformMatch = text.match(/平台账号\s*[：:]\s*(\S+)/);
     const todayMatch = text.match(/今日首存\s*[：:]\s*(\d+)/);
     const monthMatch = text.match(/本月首存\s*[：:]\s*(\d+)/);
 
     return {
         platformAccount: platformMatch ? platformMatch[1] : null,
-        todayDeposit: todayMatch ? parseInt(todayMatch[1]) : 0,
-        monthDeposit: monthMatch ? parseInt(monthMatch[1]) : 0
+        todayDeposit: todayMatch ? parseInt(todayMatch[1], 10) : 0,
+        monthDeposit: monthMatch ? parseInt(monthMatch[1], 10) : 0
     };
 }
 
