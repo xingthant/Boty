@@ -21,24 +21,27 @@ bot.on("error", (err) => {
 });
 
 // =========================
-// STATE
+// STATE (Optimized for 512MB)
 // =========================
 let collecting = false;
 let records = [];
+let accountSet = new Set(); // Ultra-fast duplicate lookup
 
 let totalRecords = 0;
 let totalTodayDeposit = 0;
 let totalMonthDeposit = 0;
 
 // =========================
-// EXTRACT DEPOSITS (If present)
+// LIGHTWEIGHT EXTRACTION
 // =========================
 function extractData(text) {
-    // Supports standard and full-width Chinese spaces/colons
-    const todayMatch = text.match(/今日首存[\s\u3000]*[：:][\s\u3000]*(\d+)/);
-    const monthMatch = text.match(/本月首存[\s\u3000]*[：:][\s\u3000]*(\d+)/);
+    // Supports standard spaces, full-width spaces, colons, and semicolons
+    const platformMatch = text.match(/平台账号[\s\u3000]*[：:；;][\s\u3000]*(\d+)/);
+    const todayMatch = text.match(/今日首存[\s\u3000]*[：:；;][\s\u3000]*(\d+)/);
+    const monthMatch = text.match(/本月首存[\s\u3000]*[：:；;][\s\u3000]*(\d+)/);
 
     return {
+        platformAccount: platformMatch ? platformMatch[1].trim() : null,
         todayDeposit: todayMatch ? parseInt(todayMatch[1], 10) : 0,
         monthDeposit: monthMatch ? parseInt(monthMatch[1], 10) : 0
     };
@@ -52,12 +55,13 @@ bot.onText(/\/startcollect/, (msg) => {
 
     collecting = true;
     records = [];
+    accountSet.clear();
 
     totalRecords = 0;
     totalTodayDeposit = 0;
     totalMonthDeposit = 0;
 
-    bot.sendMessage(msg.chat.id, "✅ Collection Started (Saving all messages)");
+    bot.sendMessage(msg.chat.id, "🚀 Silent Collection Started! (No more duplicate freezes)");
 });
 
 bot.onText(/\/summary/, (msg) => {
@@ -105,32 +109,35 @@ ${records.join("\n\n----------------------\n\n")}
 });
 
 // =========================
-// MESSAGE HANDLER (NO VALIDATION)
+// ULTRA-FAST MESSAGE HANDLER (NO SPAM / NO LAG)
 // =========================
 bot.on("message", (msg) => {
     if (!collecting) return;
     if (!msg.text) return;
-    if (msg.text.startsWith("/")) return; // Ignore bot commands
+    if (msg.text.startsWith("/")) return; 
 
     const text = msg.text.trim();
-    
-    // Extract data if matching keywords exist; otherwise defaults to 0
     const data = extractData(text);
 
-    // Save EVERYTHING
+    // Instant Duplicate Check
+    if (data.platformAccount) {
+        if (accountSet.has(data.platformAccount)) {
+            // Skips duplicates immediately without spending CPU cycles or replying
+            return; 
+        }
+        accountSet.add(data.platformAccount);
+    }
+
+    // Process memory values instantly inside RAM
     totalRecords++;
     totalTodayDeposit += data.todayDeposit;
     totalMonthDeposit += data.monthDeposit;
     
-    // Formats record line with sender details for the report file
     const senderName = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name || 'User'}`;
     records.push(`[Sender: ${senderName}]\n${text}`);
 
-    // Simple acknowledgement response in the group chat
-    bot.sendMessage(
-        msg.chat.id,
-        `✅ Message #${totalRecords} Saved`
-    );
+    // 🔥 FIXED: Removing the "Saved" message reply prevents Telegram from rate-limiting 
+    // the bot when multiple members paste text blocks at the exact same time.
 });
 
 // =========================
@@ -140,11 +147,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
-    res.send("Bot is running 🔥");
+    res.send("Bot is running safely on 512MB tier 🔥");
 });
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
 
-console.log("🤖 Bot started...");
+console.log("🤖 Lightweight Bot started...");
