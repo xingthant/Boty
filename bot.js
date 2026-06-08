@@ -2,7 +2,7 @@ const TelegramBot = require("node-telegram-bot-api");
 const fs = require("fs");
 const express = require("express");
 
-const TOKEN = "8841041534:AAE1wljybAZaOu1sB3WQK4JN6aqNTgsRRyU"; // 🔥 replace this
+const TOKEN = "8841041534:AAE1wljybAZaOu1sB3WQK4JN6aqNTgsRRyU";
 const OWNER_ID = 7756391343;
 
 const bot = new TelegramBot(TOKEN, {
@@ -10,7 +10,7 @@ const bot = new TelegramBot(TOKEN, {
 });
 
 // =========================
-// 🔥 ERROR HANDLING FIX
+// ERROR HANDLING
 // =========================
 bot.on("polling_error", (err) => {
     console.log("❌ Polling error:", err.code || err.message);
@@ -25,41 +25,20 @@ bot.on("error", (err) => {
 // =========================
 let collecting = false;
 let records = [];
-let accountSet = new Set();
 
 let totalRecords = 0;
 let totalTodayDeposit = 0;
 let totalMonthDeposit = 0;
 
 // =========================
-// VALIDATION
-// =========================
-function isValidRecord(text) {
-    const requiredFields = [
-        "Ws账号",
-        "平台账号",
-        "进粉日期",
-        "IP状态",
-        "今日首存",
-        "本月首存"
-    ];
-
-    return requiredFields.every(field => {
-        const regex = new RegExp(field + "\\s*[：:]");
-        return regex.test(text);
-    });
-}
-
-// =========================
-// EXTRACT DATA
+// EXTRACT DEPOSITS (If present)
 // =========================
 function extractData(text) {
-    const platformMatch = text.match(/平台账号\s*[：:]\s*(\S+)/);
-    const todayMatch = text.match(/今日首存\s*[：:]\s*(\d+)/);
-    const monthMatch = text.match(/本月首存\s*[：:]\s*(\d+)/);
+    // Supports standard and full-width Chinese spaces/colons
+    const todayMatch = text.match(/今日首存[\s\u3000]*[：:][\s\u3000]*(\d+)/);
+    const monthMatch = text.match(/本月首存[\s\u3000]*[：:][\s\u3000]*(\d+)/);
 
     return {
-        platformAccount: platformMatch ? platformMatch[1] : null,
         todayDeposit: todayMatch ? parseInt(todayMatch[1], 10) : 0,
         monthDeposit: monthMatch ? parseInt(monthMatch[1], 10) : 0
     };
@@ -73,13 +52,12 @@ bot.onText(/\/startcollect/, (msg) => {
 
     collecting = true;
     records = [];
-    accountSet.clear();
 
     totalRecords = 0;
     totalTodayDeposit = 0;
     totalMonthDeposit = 0;
 
-    bot.sendMessage(msg.chat.id, "✅ Collection Started");
+    bot.sendMessage(msg.chat.id, "✅ Collection Started (Saving all messages)");
 });
 
 bot.onText(/\/summary/, (msg) => {
@@ -111,50 +89,52 @@ ${records.join("\n\n----------------------\n\n")}
     const fileName = `report_${Date.now()}.txt`;
     fs.writeFileSync(fileName, report);
 
-    await bot.sendDocument(msg.chat.id, fileName);
+    try {
+        await bot.sendDocument(msg.chat.id, fileName);
+        bot.sendMessage(
+            msg.chat.id,
+            `✅ Stopped\n\nRecords: ${totalRecords}\nToday: ${totalTodayDeposit}\nMonth: ${totalMonthDeposit}`
+        );
+    } catch (err) {
+        console.log("❌ Error sending document:", err.message);
+    }
 
-    bot.sendMessage(
-        msg.chat.id,
-        `✅ Stopped\n\nRecords: ${totalRecords}\nToday: ${totalTodayDeposit}\nMonth: ${totalMonthDeposit}`
-    );
-
-    fs.unlinkSync(fileName);
+    if (fs.existsSync(fileName)) {
+        fs.unlinkSync(fileName);
+    }
 });
 
 // =========================
-// MESSAGE HANDLER
+// MESSAGE HANDLER (NO VALIDATION)
 // =========================
 bot.on("message", (msg) => {
     if (!collecting) return;
     if (!msg.text) return;
-    if (msg.text.startsWith("/")) return;
+    if (msg.text.startsWith("/")) return; // Ignore bot commands
 
     const text = msg.text.trim();
-
-    if (!isValidRecord(text)) return;
-
+    
+    // Extract data if matching keywords exist; otherwise defaults to 0
     const data = extractData(text);
-    if (!data.platformAccount) return;
 
-    if (accountSet.has(data.platformAccount)) {
-        bot.sendMessage(msg.chat.id, `⚠ Duplicate: ${data.platformAccount}`);
-        return;
-    }
-
-    accountSet.add(data.platformAccount);
+    // Save EVERYTHING
     totalRecords++;
     totalTodayDeposit += data.todayDeposit;
     totalMonthDeposit += data.monthDeposit;
-    records.push(text);
+    
+    // Formats record line with sender details for the report file
+    const senderName = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name || 'User'}`;
+    records.push(`[Sender: ${senderName}]\n${text}`);
 
+    // Simple acknowledgement response in the group chat
     bot.sendMessage(
         msg.chat.id,
-        `✅ Saved\nAccount: ${data.platformAccount}\nTotal: ${totalRecords}`
+        `✅ Message #${totalRecords} Saved`
     );
 });
 
 // =========================
-// EXPRESS SERVER (Render FIX)
+// EXPRESS SERVER
 // =========================
 const app = express();
 const PORT = process.env.PORT || 3000;
