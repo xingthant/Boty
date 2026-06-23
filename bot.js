@@ -2,7 +2,7 @@ const TelegramBot = require("node-telegram-bot-api");
 const fs = require("fs");
 const express = require("express");
 
-const TOKEN = "8881474832:AAHEGCGjckQsXI1HZ3MDZzeC372AkG9MKBg";
+const TOKEN = "8881474832:AAHEGCGjckQsXI1HZ3MDZzKBg";
 const OWNER_ID = 7756391343;
 
 const bot = new TelegramBot(TOKEN, {
